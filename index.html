@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    <title>Asphalt Racer 3D</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="orientation-warning">
+        <div>Поверните устройство<br>в горизонтальное положение</div>
+    </div>
+
+    <div id="game-container"></div>
+
+    <div id="hud">
+        <div class="hud-item">
+            <span class="hud-label">Speed</span>
+            <span class="hud-value" id="speed">0</span>
+            <span style="font-size:14px; opacity:0.6;">km/h</span>
+        </div>
+        <div class="hud-item">
+            <span class="hud-label">Score</span>
+            <span class="hud-value" id="score">0</span>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="control-btn" id="btn-left">◀</button>
+        <button class="control-btn" id="btn-right">▶</button>
+        <button class="control-btn" id="btn-gas">GAS</button>
+        <button class="control-btn" id="btn-brake">BRAKE</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
