@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="format-detection" content="telephone=no">
-    <title>Asphalt Racer 3D</title>
+    <title>Asphalt Racer 3D — Full Edition</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,23 +15,106 @@
 
     <div id="game-container"></div>
 
-    <div id="hud">
-        <div class="hud-item">
-            <span class="hud-label">Speed</span>
-            <span class="hud-value" id="speed">0</span>
-            <span style="font-size:14px; opacity:0.6;">km/h</span>
+    <!-- MENU -->
+    <div id="menu-screen" class="screen">
+        <div class="game-title">Asphalt Racer</div>
+        <div class="game-subtitle">3D Arcade Racing</div>
+        
+        <div class="label-small">Выберите машину</div>
+        <div class="selection-row">
+            <div class="car-option selected" data-car="sport">
+                <div class="car-icon car-sport"></div>
+                <span class="label-small">Sport</span>
+            </div>
+            <div class="car-option" data-car="super">
+                <div class="car-icon car-super"></div>
+                <span class="label-small">Super</span>
+            </div>
+            <div class="car-option" data-car="jeep">
+                <div class="car-icon car-jeep"></div>
+                <span class="label-small">Jeep</span>
+            </div>
         </div>
-        <div class="hud-item">
-            <span class="hud-label">Score</span>
-            <span class="hud-value" id="score">0</span>
+
+        <div class="label-small">Выберите трассу</div>
+        <div class="selection-row">
+            <div class="track-option selected" data-track="day">
+                <div class="track-icon track-day"></div>
+                <span class="label-small">Day</span>
+            </div>
+            <div class="track-option" data-track="desert">
+                <div class="track-icon track-desert"></div>
+                <span class="label-small">Desert</span>
+            </div>
+        </div>
+
+        <button class="btn-primary" id="btn-start">Start Engine</button>
+        <div class="highscore-display">🏆 Рекорд: <span id="menu-highscore">0</span></div>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="gameover-screen" class="screen hidden">
+        <div class="game-title" style="font-size:36px;">Game Over</div>
+        <div class="gameover-stats">
+            <div class="stat-box">
+                <div class="stat-value" id="final-score">0</div>
+                <div class="stat-label">Score</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="final-coins">0</div>
+                <div class="stat-label">Coins</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="final-highscore">0</div>
+                <div class="stat-label">Best</div>
+            </div>
+        </div>
+        <button class="btn-primary" id="btn-restart">Restart</button>
+        <button class="btn-secondary" id="btn-menu">Main Menu</button>
+    </div>
+
+    <!-- PAUSE -->
+    <div id="pause-overlay" class="hidden">
+        <div class="pause-title">Paused</div>
+        <button class="btn-primary" onclick="game.togglePause()">Resume</button>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+        <div class="hud-left">
+            <div class="hud-item">
+                <span class="hud-label">Speed</span>
+                <span class="hud-value" id="speed">0</span>
+                <span style="font-size:12px; opacity:0.6;">km/h</span>
+            </div>
+            <div class="hud-item">
+                <span class="hud-label">Score</span>
+                <span class="hud-value" id="score">0</span>
+            </div>
+        </div>
+        <div class="hud-right">
+            <div class="hud-item">
+                <span class="hud-label">🪙</span>
+                <span class="hud-value" id="coins" style="font-size:20px;">0</span>
+            </div>
+            <div class="hud-item" style="flex-direction:column; align-items:flex-end;">
+                <span class="hud-label">NITRO</span>
+                <div class="nitro-container">
+                    <div id="nitro-bar"></div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="controls">
+    <button id="btn-pause" class="hidden">⏸</button>
+
+    <!-- CONTROLS -->
+    <div id="controls" class="hidden">
         <button class="control-btn" id="btn-left">◀</button>
         <button class="control-btn" id="btn-right">▶</button>
         <button class="control-btn" id="btn-gas">GAS</button>
-        <button class="control-btn" id="btn-brake">BRAKE</button>
+        <button class="control-btn" id="btn-brake">BRK</button>
+        <button class="control-btn" id="btn-nitro">NITRO</button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
