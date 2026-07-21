@@ -1,5 +1,5 @@
 // ============================================
-// Asphalt Racer 3D — Full Edition
+// Asphalt Racer 3D — Full Edition (fixed)
 // ============================================
 
 const CONFIG = {
@@ -18,13 +18,16 @@ const CONFIG = {
     cloudCount: 8,
     obstacleSpawnRate: 0.012,
     coinSpawnRate: 0.025,
-    aiCount: 2
+    aiCount: 2,
+    maxDifficulty: 3,
+    comboWindow: 2.2 // seconds allowed between coins to keep the combo alive
 };
 
 const state = {
     screen: 'menu',
     speed: 0,
     score: 0,
+    scorePenalty: 0,
     coins: 0,
     distance: 0,
     nitro: 100,
@@ -39,7 +42,9 @@ const state = {
     difficulty: 1,
     selectedCar: 'sport',
     selectedTrack: 'day',
-    highScore: parseInt(localStorage.getItem('ar_highscore') || '0')
+    highScore: parseInt(localStorage.getItem('ar_highscore') || '0'),
+    combo: 0,
+    comboTimer: 0
 };
 
 let scene, camera, renderer, shadowLight;
@@ -47,6 +52,10 @@ let car, carBody, wheels = [];
 let roadSegments = [], sceneryItems = [], clouds = [];
 let obstacles = [], coins = [], aiCars = [];
 let clock, audioMgr, particleSystem;
+
+// Cache of generated textures so we don't regenerate + leak canvas textures
+// every time the track/car is (re)created.
+const textureCache = { road: {}, car: {} };
 
 // ============================================
 // UTILS
@@ -56,6 +65,21 @@ function haptic(type = 'light') {
     if (!navigator.vibrate) return;
     const p = { light: 15, medium: 30, heavy: 50, coin: [10, 20, 10], crash: [50, 30, 80] };
     navigator.vibrate(p[type] || 20);
+}
+
+// Recursively frees GPU geometry/material resources for an Object3D subtree.
+// Textures that are flagged `isCachedTexture` are intentionally left alone
+// because they're reused from textureCache and shouldn't be destroyed.
+function disposeObject3D(obj) {
+    if (!obj) return;
+    obj.traverse(child => {
+        if (child.geometry) child.geometry.dispose();
+        const mats = Array.isArray(child.material) ? child.material : (child.material ? [child.material] : []);
+        mats.forEach(m => {
+            if (m.map && !m.map.isCachedTexture) m.map.dispose();
+            m.dispose();
+        });
+    });
 }
 
 function createAsphaltTexture() {
@@ -99,6 +123,16 @@ function createSandTexture() {
     return tex;
 }
 
+// Returns a cached ground texture for the given track, creating it once.
+function getRoadTexture(track) {
+    if (!textureCache.road[track]) {
+        const tex = track === 'desert' ? createSandTexture() : createAsphaltTexture();
+        tex.isCachedTexture = true;
+        textureCache.road[track] = tex;
+    }
+    return textureCache.road[track];
+}
+
 function createCarTexture(hex) {
     const c = document.createElement('canvas');
     c.width = 128; c.height = 128;
@@ -116,6 +150,16 @@ function createCarTexture(hex) {
     return new THREE.CanvasTexture(c);
 }
 
+// Returns a cached car body texture keyed by hex color.
+function getCarTexture(hex) {
+    if (!textureCache.car[hex]) {
+        const tex = createCarTexture(hex);
+        tex.isCachedTexture = true;
+        textureCache.car[hex] = tex;
+    }
+    return textureCache.car[hex];
+}
+
 // ============================================
 // AUDIO
 // ============================================
@@ -127,6 +171,7 @@ class AudioManager {
         this.engineNode = null;
         this.engineGain = null;
         this.initialized = false;
+        this.musicTimer = null;
     }
 
     init() {
@@ -138,7 +183,6 @@ class AudioManager {
         this.masterGain.gain.value = 0.35;
         this.masterGain.connect(this.ctx.destination);
         this.initEngine();
-        this.initMusic();
         this.initialized = true;
     }
 
@@ -157,11 +201,14 @@ class AudioManager {
         this.engineNode.start();
     }
 
-    initMusic() {
+    // Music now only runs a self-scheduling loop while state.screen === 'game',
+    // and stops cleanly instead of polling forever in the background.
+    startMusic() {
+        if (!this.initialized || this.musicTimer) return;
         const notes = [130.81, 164.81, 196.00, 261.63, 196.00, 164.81];
         let i = 0;
         const play = () => {
-            if (state.screen !== 'game') { setTimeout(play, 400); return; }
+            if (state.screen !== 'game') { this.musicTimer = null; return; }
             const osc = this.ctx.createOscillator();
             const g = this.ctx.createGain();
             osc.type = 'triangle';
@@ -173,7 +220,7 @@ class AudioManager {
             osc.start();
             osc.stop(this.ctx.currentTime + 0.35);
             i++;
-            setTimeout(play, 280);
+            this.musicTimer = setTimeout(play, 280);
         };
         play();
     }
@@ -185,13 +232,13 @@ class AudioManager {
         this.engineGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.1);
     }
 
-    playCoin() {
+    playCoin(pitchBoost = 0) {
         if (!this.initialized) return;
         const osc = this.ctx.createOscillator();
         const g = this.ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(1100, this.ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1800, this.ctx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(1100 + pitchBoost, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1800 + pitchBoost, this.ctx.currentTime + 0.1);
         g.gain.setValueAtTime(0.12, this.ctx.currentTime);
         g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.12);
         osc.connect(g);
@@ -359,7 +406,7 @@ class Game {
     }
 
     createCar() {
-        if (car) scene.remove(car);
+        if (car) { scene.remove(car); disposeObject3D(car); }
         car = new THREE.Group();
         wheels = [];
         this.nitroFlames = [];
@@ -373,7 +420,7 @@ class Game {
         };
         const s = settings[state.selectedCar] || settings.sport;
 
-        const bodyTex = createCarTexture(carColor);
+        const bodyTex = getCarTexture(carColor);
         const bodyGeom = new THREE.BoxGeometry(s.w, s.h, s.l);
         const bodyMat = new THREE.MeshStandardMaterial({ map: bodyTex, roughness: 0.3, metalness: 0.6 });
         carBody = new THREE.Mesh(bodyGeom, bodyMat);
@@ -433,10 +480,10 @@ class Game {
     }
 
     createRoad() {
-        roadSegments.forEach(s => scene.remove(s));
+        roadSegments.forEach(s => { scene.remove(s); disposeObject3D(s); });
         roadSegments = [];
         const isDesert = state.selectedTrack === 'desert';
-        const roadTex = isDesert ? createSandTexture() : createAsphaltTexture();
+        const roadTex = getRoadTexture(state.selectedTrack);
         const grassColor = isDesert ? 0xE8DCC0 : 0x2d8a2d;
 
         for (let i = 0; i < CONFIG.segmentCount; i++) {
@@ -483,7 +530,7 @@ class Game {
     }
 
     createScenery() {
-        sceneryItems.forEach(s => scene.remove(s));
+        sceneryItems.forEach(s => { scene.remove(s); disposeObject3D(s); });
         sceneryItems = [];
         const isDesert = state.selectedTrack === 'desert';
 
@@ -531,7 +578,7 @@ class Game {
     }
 
     createClouds() {
-        clouds.forEach(c => scene.remove(c));
+        clouds.forEach(c => { scene.remove(c); disposeObject3D(c); });
         clouds = [];
         const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 });
         for (let i = 0; i < CONFIG.cloudCount; i++) {
@@ -600,7 +647,7 @@ class Game {
         const lane = Math.floor(Math.random() * 3) - 1;
         obs.position.x = lane * CONFIG.laneWidth;
         obs.position.z = 150 + Math.random() * 30;
-        obs.userData = { type };
+        obs.userData = { type, lane };
         obstacles.push(obs);
         scene.add(obs);
     }
@@ -631,9 +678,15 @@ class Game {
     }
 
     setupControls() {
+        // NOTE ON STEERING DIRECTION:
+        // The chase camera sits behind the car looking toward +Z, which
+        // mirrors the world X axis on screen (moving +X reads as "left"
+        // on screen, not "right"). The button/key mapping below accounts
+        // for that so "left" visually turns the car left and "right"
+        // visually turns it right.
         const buttons = {
-            'btn-left': { start: () => state.targetSteering = -1, end: () => state.targetSteering = 0 },
-            'btn-right': { start: () => state.targetSteering = 1, end: () => state.targetSteering = 0 },
+            'btn-left': { start: () => state.targetSteering = 1, end: () => state.targetSteering = 0 },
+            'btn-right': { start: () => state.targetSteering = -1, end: () => state.targetSteering = 0 },
             'btn-gas': { start: () => state.accelerating = true, end: () => state.accelerating = false },
             'btn-brake': { start: () => state.braking = true, end: () => state.braking = false },
             'btn-nitro': { start: () => this.activateNitro(), end: () => this.deactivateNitro() }
@@ -652,24 +705,29 @@ class Game {
             btn.addEventListener('mouseleave', onEnd);
         }
 
+        const steerKeys = new Set(['ArrowLeft', 'ArrowRight', 'a', 'A', 'd', 'D']);
+        const actionKeys = new Set(['ArrowUp', 'ArrowDown', 'w', 'W', 's', 'S', 'Shift', ' ']);
+
         document.addEventListener('keydown', (e) => {
+            if (steerKeys.has(e.key) || actionKeys.has(e.key)) e.preventDefault();
             if (e.repeat) return;
             switch (e.key) {
-                case 'ArrowLeft': case 'a': state.targetSteering = -1; break;
-                case 'ArrowRight': case 'd': state.targetSteering = 1; break;
-                case 'ArrowUp': case 'w': state.accelerating = true; break;
-                case 'ArrowDown': case 's': state.braking = true; break;
+                case 'ArrowLeft': case 'a': case 'A': state.targetSteering = 1; break;
+                case 'ArrowRight': case 'd': case 'D': state.targetSteering = -1; break;
+                case 'ArrowUp': case 'w': case 'W': state.accelerating = true; break;
+                case 'ArrowDown': case 's': case 'S': state.braking = true; break;
                 case 'Shift': case ' ': this.activateNitro(); break;
                 case 'Escape': this.togglePause(); break;
             }
         });
 
         document.addEventListener('keyup', (e) => {
+            if (steerKeys.has(e.key) || actionKeys.has(e.key)) e.preventDefault();
             switch (e.key) {
-                case 'ArrowLeft': case 'a': state.targetSteering = 0; break;
-                case 'ArrowRight': case 'd': state.targetSteering = 0; break;
-                case 'ArrowUp': case 'w': state.accelerating = false; break;
-                case 'ArrowDown': case 's': state.braking = false; break;
+                case 'ArrowLeft': case 'a': case 'A': state.targetSteering = 0; break;
+                case 'ArrowRight': case 'd': case 'D': state.targetSteering = 0; break;
+                case 'ArrowUp': case 'w': case 'W': state.accelerating = false; break;
+                case 'ArrowDown': case 's': case 'S': state.braking = false; break;
                 case 'Shift': case ' ': this.deactivateNitro(); break;
             }
         });
@@ -712,6 +770,7 @@ class Game {
         });
 
         document.getElementById('btn-restart').addEventListener('click', () => {
+            audioMgr.init();
             this.resetGame();
             this.startGame();
         });
@@ -740,17 +799,19 @@ class Game {
         document.getElementById('hud').classList.remove('hidden');
         document.getElementById('controls').classList.remove('hidden');
         document.getElementById('btn-pause').classList.remove('hidden');
+        audioMgr.startMusic();
     }
 
     resetGame() {
-        state.speed = 0; state.score = 0; state.coins = 0; state.distance = 0;
+        state.speed = 0; state.score = 0; state.scorePenalty = 0; state.coins = 0; state.distance = 0;
         state.nitro = 100; state.gameOver = false; state.steering = 0; state.targetSteering = 0;
         state.accelerating = false; state.braking = false; state.nitroActive = false;
         state.drift = 0; state.collisionTimer = 0; state.difficulty = 1;
+        state.combo = 0; state.comboTimer = 0;
 
-        obstacles.forEach(o => scene.remove(o)); obstacles = [];
-        coins.forEach(c => scene.remove(c)); coins = [];
-        aiCars.forEach(a => scene.remove(a)); aiCars = [];
+        obstacles.forEach(o => { scene.remove(o); disposeObject3D(o); }); obstacles = [];
+        coins.forEach(c => { scene.remove(c); disposeObject3D(c); }); coins = [];
+        aiCars.forEach(a => { scene.remove(a); disposeObject3D(a); }); aiCars = [];
 
         this.setTrackEnvironment();
         this.createCar();
@@ -769,6 +830,7 @@ class Game {
             state.screen = 'game';
             document.getElementById('pause-overlay').classList.add('hidden');
             clock.getDelta();
+            audioMgr.startMusic();
         }
     }
 
@@ -804,13 +866,17 @@ class Game {
         this.updateCoins(dt);
         this.updateObstacles(dt);
         this.updateAI(dt);
+        this.updateCombo(dt);
         particleSystem.update(dt);
         this.updateNitroFlames(dt);
         this.updateDriftFX(dt);
         this.updateCamera();
         audioMgr.setEngine(state.speed);
-        state.difficulty = 1 + state.score / 3000;
+        // Difficulty now eases in and caps out instead of climbing forever,
+        // so very long runs stay challenging rather than becoming unfair.
+        state.difficulty = Math.min(1 + state.score / 3000, CONFIG.maxDifficulty);
         this.updateHUD();
+        this.updateWarning();
     }
 
     updatePhysics(dt) {
@@ -873,9 +939,22 @@ class Game {
         }
 
         state.distance += state.speed * dt;
-        state.score = Math.floor(state.distance / 10) + state.coins * 10;
+        // Score is now additive (distance gain this frame + coin/penalty
+        // events applied where they happen) instead of being recomputed
+        // from scratch every frame, so collision penalties actually stick.
+        const distanceScore = Math.floor(state.distance / 10);
+        state.score = Math.max(0, distanceScore + state.coins * 10 - state.scorePenalty);
 
         if (car.position.x > 35 || car.position.x < -35) this.gameOver();
+    }
+
+    updateCombo(dt) {
+        if (state.combo > 0) {
+            state.comboTimer -= dt;
+            if (state.comboTimer <= 0) {
+                state.combo = 0;
+            }
+        }
     }
 
     updateDriftFX(dt) {
@@ -944,19 +1023,25 @@ class Game {
             const dx = Math.abs(c.position.x - car.position.x);
             const dz = Math.abs(c.position.z - car.position.z);
             if (dx < 1.5 && dz < 2.5) {
+                // Combo system: chaining coins within the combo window
+                // raises a multiplier that boosts nitro regen and pitch.
+                state.combo = Math.min(state.combo + 1, 20);
+                state.comboTimer = CONFIG.comboWindow;
+                const multiplier = 1 + Math.floor(state.combo / 5) * 0.5;
                 state.coins++;
-                state.nitro = Math.min(100, state.nitro + 8);
-                audioMgr.playCoin();
+                state.nitro = Math.min(100, state.nitro + 8 * multiplier);
+                audioMgr.playCoin(Math.min(state.combo * 20, 400));
                 haptic('coin');
                 particleSystem.emit(
                     { x: c.position.x, y: c.position.y, z: c.position.z },
                     { r: 1, g: 0.9, b: 0.2 }, 8, 5, 0.5, 0.4
                 );
                 scene.remove(c);
+                disposeObject3D(c);
                 coins.splice(i, 1);
                 continue;
             }
-            if (c.position.z < -50) { scene.remove(c); coins.splice(i, 1); }
+            if (c.position.z < -50) { scene.remove(c); disposeObject3D(c); coins.splice(i, 1); }
         }
         this.spawnCoin();
     }
@@ -971,7 +1056,7 @@ class Game {
                 const dz = Math.abs(obs.position.z - car.position.z);
                 if (dx < 2.0 && dz < 3.5 && state.collisionTimer <= 0) this.handleCollision(obs);
             }
-            if (obs.position.z < -50) { scene.remove(obs); obstacles.splice(i, 1); }
+            if (obs.position.z < -50) { scene.remove(obs); disposeObject3D(obs); obstacles.splice(i, 1); }
         }
         this.spawnObstacle();
     }
@@ -996,6 +1081,7 @@ class Game {
 
             if (ai.position.z < -60 || ai.position.z > 250) {
                 scene.remove(ai);
+                disposeObject3D(ai);
                 aiCars.splice(i, 1);
             }
         }
@@ -1005,13 +1091,40 @@ class Game {
     handleCollision(obj) {
         state.speed *= 0.25;
         state.collisionTimer = 0.6;
-        state.score = Math.max(0, state.score - 50);
+        state.scorePenalty += 50;
+        state.combo = 0;
+        state.comboTimer = 0;
         audioMgr.playCrash();
         haptic('crash');
         particleSystem.emit(
             { x: car.position.x, y: 1, z: car.position.z },
             { r: 1, g: 0.8, b: 0.2 }, 15, 10, 0.6, 0.5
         );
+    }
+
+    // Looks slightly ahead of the car for the nearest same-lane hazard and
+    // flashes a small on-screen warning arrow so players get a beat of
+    // notice before a car or barrier reaches them.
+    updateWarning() {
+        const warning = document.getElementById('warning-indicator');
+        if (!warning) return;
+        const laneW = CONFIG.laneWidth;
+        let nearest = Infinity;
+        const checkList = obstacles.filter(o => o.userData.type !== 'puddle').concat(aiCars);
+        checkList.forEach(o => {
+            const dx = Math.abs(o.position.x - car.position.x);
+            const dz = o.position.z - car.position.z;
+            if (dx < laneW * 0.9 && dz > 0 && dz < 45) {
+                if (dz < nearest) nearest = dz;
+            }
+        });
+        if (nearest < 45) {
+            warning.classList.remove('hidden');
+            const intensity = 1 - nearest / 45;
+            warning.style.opacity = (0.4 + intensity * 0.6).toFixed(2);
+        } else {
+            warning.classList.add('hidden');
+        }
     }
 
     updateCamera() {
@@ -1036,6 +1149,17 @@ class Game {
         bar.style.background = state.nitroActive
             ? 'linear-gradient(90deg, #ff6600, #ffcc00)'
             : 'linear-gradient(90deg, #00ccff, #0088ff)';
+
+        const comboEl = document.getElementById('combo-display');
+        if (comboEl) {
+            if (state.combo >= 3) {
+                const multiplier = 1 + Math.floor(state.combo / 5) * 0.5;
+                comboEl.textContent = `COMBO x${state.combo} (${multiplier.toFixed(1)}x)`;
+                comboEl.classList.remove('hidden');
+            } else {
+                comboEl.classList.add('hidden');
+            }
+        }
     }
 
     onResize() {
