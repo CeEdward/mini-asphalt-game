@@ -38,12 +38,17 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    /* "safe center" falls back to start-aligned if the content is taller
+       than the viewport, so nothing gets pushed off-screen on short
+       landscape phones. overflow-y lets the rest be reached by scrolling. */
+    justify-content: safe center;
     background: rgba(0,0,0,0.88);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     color: #fff;
-    padding: 20px;
+    padding: 16px 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .game-title {
@@ -452,4 +457,28 @@ html, body {
 
 @media (orientation: portrait) {
     #orientation-warning { display: flex; }
+}
+
+/* Short landscape viewports (most phones in landscape, e.g. ~360-420px
+   tall): shrink the menu's vertical rhythm so everything - title through
+   the Start Engine button - fits without needing to scroll. */
+@media (max-height: 480px) {
+    .game-title { font-size: 30px; margin-bottom: 2px; }
+    .game-subtitle { margin-bottom: 10px; font-size: 12px; }
+    .label-small { font-size: 10px; }
+    .selection-row { gap: 8px; margin-bottom: 10px; }
+    .car-option, .track-option { width: 64px; height: 64px; gap: 3px; }
+    .car-icon, .track-icon { width: 36px; height: 22px; }
+    .btn-primary { width: 190px; height: 44px; font-size: 16px; margin-top: 4px; }
+    .btn-secondary { width: 160px; height: 40px; margin-top: 6px; }
+    .highscore-display { margin-top: 6px; font-size: 12px; }
+    .gameover-stats { margin: 10px 0; gap: 20px; }
+    .stat-value { font-size: 22px; }
+}
+
+@media (max-height: 360px) {
+    .game-title { font-size: 24px; }
+    .game-subtitle { display: none; }
+    .selection-row { margin-bottom: 6px; }
+    .car-option, .track-option { width: 52px; height: 52px; }
 }
