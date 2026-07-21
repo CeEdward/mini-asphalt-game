@@ -1,0 +1,184 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+#game-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+}
+
+#game-container canvas {
+    display: block;
+}
+
+/* HUD */
+#hud {
+    position: fixed;
+    top: 15px;
+    left: 15px;
+    z-index: 10;
+    pointer-events: none;
+    color: #fff;
+    font-weight: 700;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+}
+
+#hud .hud-item {
+    font-size: 22px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+#hud .hud-label {
+    font-size: 14px;
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#hud .hud-value {
+    font-size: 28px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Controls */
+.controls {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.control-btn {
+    position: absolute;
+    pointer-events: auto;
+    border: none;
+    outline: none;
+    border-radius: 24px;
+    font-size: 32px;
+    font-weight: 900;
+    color: rgba(255,255,255,0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: transform 0.05s, background 0.1s;
+    cursor: pointer;
+}
+
+.control-btn:active {
+    transform: scale(0.92);
+}
+
+/* Steering buttons */
+#btn-left, #btn-right {
+    width: 90px;
+    height: 90px;
+    bottom: 100px;
+    background: rgba(255,255,255,0.12);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+#btn-left {
+    left: 25px;
+}
+
+#btn-right {
+    left: 130px;
+}
+
+/* Gas */
+#btn-gas {
+    right: 25px;
+    bottom: 100px;
+    width: 110px;
+    height: 110px;
+    background: rgba(0, 200, 80, 0.2);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1), 0 0 30px rgba(0,200,80,0.1);
+    font-size: 20px;
+    letter-spacing: 2px;
+}
+
+#btn-gas:active {
+    background: rgba(0, 200, 80, 0.45);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2), 0 0 40px rgba(0,200,80,0.3);
+}
+
+/* Brake */
+#btn-brake {
+    right: 150px;
+    bottom: 100px;
+    width: 90px;
+    height: 90px;
+    background: rgba(220, 40, 40, 0.2);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1), 0 0 30px rgba(220,40,40,0.1);
+    font-size: 14px;
+    letter-spacing: 1px;
+}
+
+#btn-brake:active {
+    background: rgba(220, 40, 40, 0.45);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2), 0 0 40px rgba(220,40,40,0.3);
+}
+
+/* Orientation warning */
+#orientation-warning {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #0a0a0a;
+    color: #fff;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-size: 20px;
+    text-align: center;
+    z-index: 1000;
+    padding: 30px;
+    gap: 15px;
+}
+
+#orientation-warning::before {
+    content: "📱";
+    font-size: 60px;
+    display: block;
+    animation: rotatePhone 2s ease-in-out infinite;
+}
+
+@keyframes rotatePhone {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(90deg); }
+}
+
+@media (orientation: portrait) {
+    #orientation-warning {
+        display: flex;
+    }
+}
